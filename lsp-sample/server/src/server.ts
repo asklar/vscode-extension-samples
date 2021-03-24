@@ -14,7 +14,7 @@ import {
 	CompletionItemKind,
 	TextDocumentPositionParams,
 	TextDocumentSyncKind,
-	InitializeResult
+	InitializeResult,
 } from 'vscode-languageserver/node';
 
 import {
@@ -137,23 +137,22 @@ documents.onDidChangeContent(change => {
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	// In this simple example we get the settings for every validate run.
 	let settings = await getDocumentSettings(textDocument.uri);
-
-	// The validator creates diagnostics for all uppercase words length 2 and more
-	let text = textDocument.getText();
-	let pattern = /\b[A-Z]{2,}\b/g;
 	let m: RegExpExecArray | null;
 
 	let problems = 0;
+	let text = textDocument.getText();
+
+	const classicTypes = /\b(int|short|long|PWSTR|PCWSTR|double|float)\b/g;
 	let diagnostics: Diagnostic[] = [];
-	while ((m = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
+	while ((m = classicTypes.exec(text)) && problems < settings.maxNumberOfProblems) {
 		problems++;
 		let diagnostic: Diagnostic = {
-			severity: DiagnosticSeverity.Warning,
+			severity: DiagnosticSeverity.Error,
 			range: {
 				start: textDocument.positionAt(m.index),
 				end: textDocument.positionAt(m.index + m[0].length)
 			},
-			message: `${m[0]} is all uppercase.`,
+			message: `${m[0]} is a classic MIDL type, not a MIDLRT type.`,
 			source: 'ex'
 		};
 		if (hasDiagnosticRelatedInformationCapability) {
@@ -163,15 +162,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 						uri: textDocument.uri,
 						range: Object.assign({}, diagnostic.range)
 					},
-					message: 'Spelling matters'
+					message: 'Do not mix MIDL and MIDLRT syntax'
 				},
-				{
-					location: {
-						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
-					},
-					message: 'Particularly for names'
-				}
 			];
 		}
 		diagnostics.push(diagnostic);
@@ -186,24 +178,89 @@ connection.onDidChangeWatchedFiles(_change => {
 	connection.console.log('We received an file change event');
 });
 
+function addCompletionItems(
+	a: CompletionItem[], 
+	items: string[], 
+	kind: CompletionItemKind): void {
+	const nextItem = a.length;
+	for (let i = 0; i < items.length; i++) {
+		const ci: CompletionItem = {
+			label: items[i],
+			kind: kind,
+			data: nextItem + i,
+		};
+		a.push(ci);
+	}
+}
+
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
 	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
 		// The pass parameter contains the position of the text document in
 		// which code complete got requested. For the example we ignore this
 		// info and always provide the same completion items.
-		return [
-			{
-				label: 'TypeScript',
-				kind: CompletionItemKind.Text,
-				data: 1
-			},
-			{
-				label: 'JavaScript',
-				kind: CompletionItemKind.Text,
-				data: 2
-			}
+
+		const types = [
+			'Int16',
+			'Int32',
+			'Int64',
+			'UInt8',
+			'UInt16',
+			'UInt32',
+			'UInt64',
+			'Char',
+			'String',
+			'Single',
+			'Double',
+			'Boolean',
+			'Guid',
+			'void',
 		];
+
+		const keywords = [
+			'runtimeclass',
+			'interface',
+			'struct',
+			'enum',
+			'event',
+			'delegate',
+			'requires',
+			'attribute',
+			'get',
+			'set',
+			'import',
+			'unsealed',
+			'static',
+			'partial',
+			'out',
+			'ref',
+			'ref const',
+		];
+
+		const attrs = [
+			'default_interface',
+			'default',
+			'interface_name',
+			'allowforweb',
+			'constructor_name',
+			'contract',
+			'static_name',
+			'attributeusage',
+			//
+			'target_runtimeclass',
+			'target_interface',
+			'target_method',
+			'target_property',
+			'target_event',
+		];
+
+
+		const items: CompletionItem[] = [];
+		addCompletionItems(items, keywords, CompletionItemKind.Keyword);
+		addCompletionItems(items, types, CompletionItemKind.Class);
+		addCompletionItems(items, attrs, CompletionItemKind.Property);
+
+		return items;
 	}
 );
 
@@ -212,11 +269,11 @@ connection.onCompletion(
 connection.onCompletionResolve(
 	(item: CompletionItem): CompletionItem => {
 		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
+			item.detail = 'A WinRT runtime class';
+			item.documentation = 'Documentation goes here';
 		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
+			item.detail = 'A WinRT interface';
+			item.documentation = 'docs';
 		}
 		return item;
 	}

@@ -4,7 +4,7 @@
  * ------------------------------------------------------------------------------------------ */
 
 import * as path from 'path';
-import { workspace, ExtensionContext } from 'vscode';
+import { workspace, ExtensionContext, languages, SemanticTokensLegend } from 'vscode';
 
 import {
 	LanguageClient,
@@ -12,8 +12,29 @@ import {
 	ServerOptions,
 	TransportKind
 } from 'vscode-languageclient/node';
+import { MidlDocumentSemanticTokensProvider } from './MidlDocumentSemanticTokensProvider';
 
 let client: LanguageClient;
+
+export const tokenTypes = new Map<string, number>();
+export const tokenModifiers = new Map<string, number>();
+
+function legend() {
+	const tokenTypesLegend = [
+		'comment', 'string', 'keyword', 'number', 'regexp', 'operator', 'namespace',
+		'type', 'struct', 'class', 'interface', 'enum', 'typeParameter', 'function',
+		'method', 'macro', 'variable', 'parameter', 'property', 'label'
+	];
+	tokenTypesLegend.forEach((tokenType, index) => tokenTypes.set(tokenType, index));
+
+	const tokenModifiersLegend = [
+		'declaration', 'documentation', 'readonly', 'static', 'abstract', 'deprecated',
+		'modification', 'async'
+	];
+	tokenModifiersLegend.forEach((tokenModifier, index) => tokenModifiers.set(tokenModifier, index));
+
+	return new SemanticTokensLegend(tokenTypesLegend, tokenModifiersLegend);
+}
 
 export function activate(context: ExtensionContext) {
 	// The server is implemented in node
@@ -38,7 +59,7 @@ export function activate(context: ExtensionContext) {
 	// Options to control the language client
 	let clientOptions: LanguageClientOptions = {
 		// Register the server for plain text documents
-		documentSelector: [{ scheme: 'file', language: 'plaintext' }],
+		documentSelector: [{ scheme: 'file', language: 'midl3' }],
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
 			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
@@ -53,6 +74,8 @@ export function activate(context: ExtensionContext) {
 		clientOptions
 	);
 
+	context.subscriptions.push(languages.registerDocumentSemanticTokensProvider({ language: 'midl3'}, 
+		new MidlDocumentSemanticTokensProvider(), legend()));
 	// Start the client. This will also launch the server
 	client.start();
 }
